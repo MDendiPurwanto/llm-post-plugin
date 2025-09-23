@@ -441,7 +441,7 @@ function llmwp_render_settings_page() {
     echo '<h2>License</h2>';
     echo '<table class="form-table" role="presentation">';
     echo '<tr><th scope="row"><label for="llmwp_license_key">License Key</label></th><td>';
-    echo '<input type="text" id="llmwp_license_key" name="llmwp_license_key" value="' . esc_attr($opts['license_key']) . '" class="regular-text" placeholder="LLMWP-XXXXXX..." />';
+    echo '<input type="text" id="llmwp_license_key" name="llmwp_license_key" value="' . esc_attr($opts['license_key']) . '" class="regular-text" placeholder="e.g., 9DA0C8F9A99E8253" />';
     $status_badge = ($opts['license_status'] === 'active')
       ? '<span style="display:inline-block;padding:2px 6px;background:#46b450;color:#fff;border-radius:3px;margin-left:8px;">Pro active</span>'
       : '<span style="display:inline-block;padding:2px 6px;background:#d63638;color:#fff;border-radius:3px;margin-left:8px;">Free</span>';
