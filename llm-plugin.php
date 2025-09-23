@@ -27,9 +27,10 @@ const LLMWP_OPT_IMG_MAX       = 'llmwp_img_max';
 const LLMWP_OPT_LICENSE_KEY   = 'llmwp_license_key';
 const LLMWP_OPT_LICENSE_STATUS= 'llmwp_license_status'; // 'active' | 'inactive'
 const LLMWP_OPT_LICENSE_MSG   = 'llmwp_license_msg';
+const LLMWP_OPT_LICENSE_TOKEN = 'llmwp_license_token';
 
 // License service (Mayar)
-const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/saas/v1/license/verify';
+const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/software/v1/license/verify';
 const LLMWP_PRODUCT_ID         = 'acf8637c-f05f-4ee6-9d37-1fa55fea3b04';
 
 // Defaults
@@ -51,6 +52,7 @@ function llmwp_default_options() {
         LLMWP_OPT_LICENSE_KEY => '',
         LLMWP_OPT_LICENSE_STATUS => 'inactive',
         LLMWP_OPT_LICENSE_MSG => '',
+        LLMWP_OPT_LICENSE_TOKEN => '',
     ];
 }
 
@@ -160,15 +162,22 @@ function llmwp_verify_license_remote($license_key) {
     }
     $site = home_url('/');
     $body = [
-        'license_key' => $license_key,
-        'product_id'  => LLMWP_PRODUCT_ID,
-        'domain'      => $site,
+        // Mayar expects camelCase keys per docs
+        'licenseCode' => $license_key,
+        'productId'   => LLMWP_PRODUCT_ID,
     ];
     // Allow payload customization
     $body = apply_filters('llmwp_license_request_body', $body, $license_key, $site);
 
+    $token = trim((string) get_option(LLMWP_OPT_LICENSE_TOKEN, ''));
+    if ($token === '') {
+        return new WP_Error('no_token', 'License API token is not configured.');
+    }
     $args = [
-        'headers' => [ 'Content-Type' => 'application/json' ],
+        'headers' => [
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'bearer ' . $token,
+        ],
         'timeout' => 20,
         'body'    => wp_json_encode($body),
     ];
@@ -187,23 +196,28 @@ function llmwp_verify_license_remote($license_key) {
         return new WP_Error('license_http', 'License verify failed: ' . $msg);
     }
 
-    // Default parse: many APIs return something like { valid: true } or { status: 'active' }
+    // Parse Mayar response format
     $parsed = [ 'status' => 'inactive', 'message' => '' ];
     if (is_array($data)) {
-        if (isset($data['valid']) && $data['valid']) {
-            $parsed['status'] = 'active';
-        } elseif (isset($data['status'])) {
-            $st = strtolower((string) $data['status']);
-            if (in_array($st, ['active','valid','ok','success'], true)) {
+        // Example success: { statusCode:200, licenseCode:{ status:'ACTIVE', ... } }
+        $statusCode = isset($data['statusCode']) ? (int) $data['statusCode'] : $code;
+        if ($statusCode === 200 && isset($data['licenseCode']['status'])) {
+            $st = strtoupper((string) $data['licenseCode']['status']);
+            if ($st === 'ACTIVE') {
                 $parsed['status'] = 'active';
+            } else {
+                $parsed['status'] = 'inactive';
+                $parsed['message'] = 'License status: ' . $st;
             }
-        } elseif (isset($data['data']['status'])) {
-            $st = strtolower((string) $data['data']['status']);
-            if (in_array($st, ['active','valid','ok','success'], true)) {
-                $parsed['status'] = 'active';
+            // Include expiry/use info if present
+            if (isset($data['licenseCode']['expiredAt'])) {
+                $parsed['message'] .= ($parsed['message'] ? ' — ' : '') . 'ExpiredAt: ' . (string) $data['licenseCode']['expiredAt'];
+            }
+            if (isset($data['licenseCode']['useCount']) && isset($data['licenseCode']['activationLimit'])) {
+                $parsed['message'] .= ($parsed['message'] ? ' — ' : '') . 'Use ' . (int)$data['licenseCode']['useCount'] . '/' . (string)$data['licenseCode']['activationLimit'];
             }
         }
-        if (isset($data['message'])) {
+        if (isset($data['message']) && $parsed['message'] === '') {
             $parsed['message'] = (string) $data['message'];
         }
     }
@@ -234,6 +248,7 @@ function llmwp_render_settings_page() {
         $pixabay_key = trim((string)($_POST['llmwp_pixabay_key'] ?? ''));
         $img_max     = isset($_POST['llmwp_img_max']) ? max(0, min(10, intval($_POST['llmwp_img_max']))) : 3;
         $license_key = trim((string)($_POST['llmwp_license_key'] ?? ''));
+        $license_tok = trim((string)($_POST['llmwp_license_token'] ?? ''));
 
         update_option(LLMWP_OPT_MODEL, $model);
         update_option(LLMWP_OPT_API_KEY, $api_key);
@@ -254,6 +269,7 @@ function llmwp_render_settings_page() {
 
         // License handling (remote verify)
         update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
+        update_option(LLMWP_OPT_LICENSE_TOKEN, $license_tok);
         if ($license_key === '') {
             update_option(LLMWP_OPT_LICENSE_STATUS, 'inactive');
             update_option(LLMWP_OPT_LICENSE_MSG, '');
@@ -281,6 +297,7 @@ function llmwp_render_settings_page() {
         'license_key' => get_option(LLMWP_OPT_LICENSE_KEY, ''),
         'license_status' => get_option(LLMWP_OPT_LICENSE_STATUS, 'inactive'),
         'license_msg' => get_option(LLMWP_OPT_LICENSE_MSG, ''),
+        'license_token' => get_option(LLMWP_OPT_LICENSE_TOKEN, ''),
     ];
 
     echo '<div class="wrap">';
@@ -372,7 +389,11 @@ function llmwp_render_settings_page() {
     if (!empty($opts['license_msg'])) {
         echo '<p><em>' . esc_html($opts['license_msg']) . '</em></p>';
     }
-    echo '<p class="description">Masukkan license key untuk mengaktifkan fitur Pro. Validasi dilakukan ke layanan Mayar. Anda dapat kustomisasi payload/respon via filter <code>llmwp_license_request_body</code>, <code>llmwp_license_request_args</code>, dan <code>llmwp_license_parse_response</code>.</p>';
+    echo '<p class="description">Masukkan license key untuk mengaktifkan Pro. Verifikasi membutuhkan API Token Mayar.</p>';
+    echo '</td></tr>';
+    echo '<tr><th scope="row"><label for="llmwp_license_token">Mayar API Token</label></th><td>';
+    echo '<input type="password" id="llmwp_license_token" name="llmwp_license_token" value="' . esc_attr($opts['license_token']) . '" class="regular-text" placeholder="bearer token from Mayar" />';
+    echo '<p class="description">Dapatkan token di Mayar: Integrasi → API Keys & Token. Token digunakan sebagai Authorization header.</p>';
     echo '</td></tr>';
     echo '</table>';
 

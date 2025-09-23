@@ -18,13 +18,17 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 - Pro: masukkan license key di Settings untuk meningkatkan batas Bulk Generate hingga 50 per batch dan membuka jalan untuk fitur lanjutan.
 
 License verification
-- Endpoint: `https://api.mayar.id/saas/v1/license/verify`
+- Endpoint: `https://api.mayar.id/software/v1/license/verify`
 - Product ID: `acf8637c-f05f-4ee6-9d37-1fa55fea3b04`
-- Plugin mengirim payload JSON default: `{ license_key, product_id, domain }` menggunakan WordPress HTTP API.
+- Plugin mengirim payload JSON default: `{ licenseCode, productId }` sesuai dokumen Mayar.
 - Jika format Mayar berbeda, kustomisasi via filter:
   - `llmwp_license_request_body` (ubah payload)
   - `llmwp_license_request_args` (ubah headers/timeout/dll.)
   - `llmwp_license_parse_response` (mapping respon ke `{status: 'active'|'inactive', message}`)
+
+Konfigurasi yang diperlukan
+- Masukkan License Key di Settings.
+- Masukkan Mayar API Token (Integrasi → API Keys & Token). Token akan dikirim sebagai header `Authorization: bearer <token>`.
 
 ## Installation
 1. Copy this folder into `wp-content/plugins/` (e.g., `wp-content/plugins/llm-posts`).
