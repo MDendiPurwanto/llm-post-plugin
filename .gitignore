@@ -1,0 +1,26 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Node / PHP tooling (not used but common)
+node_modules/
+vendor/
+composer.lock
+
+# Build artifacts
+dist/
+build/
+.cache/
+
+# Env / secrets
+.env
+.env.*
+
+# WordPress
+*.log
+debug.log
+
