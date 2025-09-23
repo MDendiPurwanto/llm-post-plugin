@@ -23,9 +23,14 @@ const LLMWP_OPT_XTITLE      = 'llmwp_x_title';
 const LLMWP_OPT_IMG_ENABLE  = 'llmwp_img_enable';
 const LLMWP_OPT_IMG_PROVIDER= 'llmwp_img_provider';
 const LLMWP_OPT_PIXABAY_KEY = 'llmwp_pixabay_key';
-const LLMWP_OPT_IMG_MAX     = 'llmwp_img_max';
-const LLMWP_OPT_LICENSE_KEY = 'llmwp_license_key';
-const LLMWP_OPT_LICENSE_STATUS = 'llmwp_license_status'; // 'active' | 'inactive'
+const LLMWP_OPT_IMG_MAX       = 'llmwp_img_max';
+const LLMWP_OPT_LICENSE_KEY   = 'llmwp_license_key';
+const LLMWP_OPT_LICENSE_STATUS= 'llmwp_license_status'; // 'active' | 'inactive'
+const LLMWP_OPT_LICENSE_MSG   = 'llmwp_license_msg';
+
+// License service (Mayar)
+const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/saas/v1/license/verify';
+const LLMWP_PRODUCT_ID         = 'acf8637c-f05f-4ee6-9d37-1fa55fea3b04';
 
 // Defaults
 function llmwp_default_options() {
@@ -45,6 +50,7 @@ function llmwp_default_options() {
         LLMWP_OPT_IMG_MAX     => 3,
         LLMWP_OPT_LICENSE_KEY => '',
         LLMWP_OPT_LICENSE_STATUS => 'inactive',
+        LLMWP_OPT_LICENSE_MSG => '',
     ];
 }
 
@@ -133,19 +139,78 @@ function llmwp_is_pro() {
 
 function llmwp_check_license_status($license_key) {
     $license_key = trim((string) $license_key);
-    $status = 'inactive';
-    if ($license_key !== '') {
-        // Basic local rule (placeholder). Replace via filter with real server check.
-        if (preg_match('/^LLMWP-[A-Z0-9]{6,}$/i', $license_key) || strlen($license_key) >= 16) {
-            $status = 'active';
+    if ($license_key === '') {
+        return 'inactive';
+    }
+    $res = llmwp_verify_license_remote($license_key);
+    if (is_wp_error($res)) {
+        update_option(LLMWP_OPT_LICENSE_MSG, $res->get_error_message());
+        return 'inactive';
+    }
+    $status  = isset($res['status']) ? (string) $res['status'] : 'inactive';
+    $message = isset($res['message']) ? (string) $res['message'] : '';
+    update_option(LLMWP_OPT_LICENSE_MSG, $message);
+    return ($status === 'active') ? 'active' : 'inactive';
+}
+
+function llmwp_verify_license_remote($license_key) {
+    $license_key = trim((string) $license_key);
+    if ($license_key === '') {
+        return new WP_Error('no_key', 'License key is empty.');
+    }
+    $site = home_url('/');
+    $body = [
+        'license_key' => $license_key,
+        'product_id'  => LLMWP_PRODUCT_ID,
+        'domain'      => $site,
+    ];
+    // Allow payload customization
+    $body = apply_filters('llmwp_license_request_body', $body, $license_key, $site);
+
+    $args = [
+        'headers' => [ 'Content-Type' => 'application/json' ],
+        'timeout' => 20,
+        'body'    => wp_json_encode($body),
+    ];
+    $args = apply_filters('llmwp_license_request_args', $args, $body);
+
+    $resp = wp_remote_post(LLMWP_LICENSE_VERIFY_URL, $args);
+    if (is_wp_error($resp)) {
+        return $resp;
+    }
+    $code = (int) wp_remote_retrieve_response_code($resp);
+    $raw  = wp_remote_retrieve_body($resp);
+    $data = json_decode($raw, true);
+    if ($code < 200 || $code >= 300) {
+        $msg = 'HTTP ' . $code;
+        if (is_array($data) && isset($data['message'])) $msg = (string) $data['message'];
+        return new WP_Error('license_http', 'License verify failed: ' . $msg);
+    }
+
+    // Default parse: many APIs return something like { valid: true } or { status: 'active' }
+    $parsed = [ 'status' => 'inactive', 'message' => '' ];
+    if (is_array($data)) {
+        if (isset($data['valid']) && $data['valid']) {
+            $parsed['status'] = 'active';
+        } elseif (isset($data['status'])) {
+            $st = strtolower((string) $data['status']);
+            if (in_array($st, ['active','valid','ok','success'], true)) {
+                $parsed['status'] = 'active';
+            }
+        } elseif (isset($data['data']['status'])) {
+            $st = strtolower((string) $data['data']['status']);
+            if (in_array($st, ['active','valid','ok','success'], true)) {
+                $parsed['status'] = 'active';
+            }
+        }
+        if (isset($data['message'])) {
+            $parsed['message'] = (string) $data['message'];
         }
     }
-    /**
-     * Filter: llmwp_license_check
-     * Return 'active' or 'inactive' after performing a custom/remote validation.
-     */
-    $status = (string) apply_filters('llmwp_license_check', $status, $license_key);
-    return ($status === 'active') ? 'active' : 'inactive';
+
+    // Allow custom mapping
+    $parsed = apply_filters('llmwp_license_parse_response', $parsed, $data, $code, $raw);
+    return $parsed;
 }
 
 // Settings page
@@ -187,10 +252,15 @@ function llmwp_render_settings_page() {
         update_option(LLMWP_OPT_PIXABAY_KEY, $pixabay_key);
         update_option(LLMWP_OPT_IMG_MAX, $img_max);
 
-        // License handling
+        // License handling (remote verify)
         update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
-        $new_status = llmwp_check_license_status($license_key);
-        update_option(LLMWP_OPT_LICENSE_STATUS, $new_status);
+        if ($license_key === '') {
+            update_option(LLMWP_OPT_LICENSE_STATUS, 'inactive');
+            update_option(LLMWP_OPT_LICENSE_MSG, '');
+        } else {
+            $new_status = llmwp_check_license_status($license_key);
+            update_option(LLMWP_OPT_LICENSE_STATUS, $new_status);
+        }
 
         $notice = '<div class="updated"><p>Settings saved.</p></div>';
     }
@@ -210,6 +280,7 @@ function llmwp_render_settings_page() {
         'img_max'     => (int) get_option(LLMWP_OPT_IMG_MAX, 3),
         'license_key' => get_option(LLMWP_OPT_LICENSE_KEY, ''),
         'license_status' => get_option(LLMWP_OPT_LICENSE_STATUS, 'inactive'),
+        'license_msg' => get_option(LLMWP_OPT_LICENSE_MSG, ''),
     ];
 
     echo '<div class="wrap">';
@@ -298,7 +369,10 @@ function llmwp_render_settings_page() {
       ? '<span style="display:inline-block;padding:2px 6px;background:#46b450;color:#fff;border-radius:3px;margin-left:8px;">Pro active</span>'
       : '<span style="display:inline-block;padding:2px 6px;background:#d63638;color:#fff;border-radius:3px;margin-left:8px;">Free</span>';
     echo $status_badge;
-    echo '<p class="description">Masukkan license key untuk mengaktifkan fitur Pro. Validasi dasar terjadi lokal dan dapat dioverride via filter <code>llmwp_license_check</code>.</p>';
+    if (!empty($opts['license_msg'])) {
+        echo '<p><em>' . esc_html($opts['license_msg']) . '</em></p>';
+    }
+    echo '<p class="description">Masukkan license key untuk mengaktifkan fitur Pro. Validasi dilakukan ke layanan Mayar. Anda dapat kustomisasi payload/respon via filter <code>llmwp_license_request_body</code>, <code>llmwp_license_request_args</code>, dan <code>llmwp_license_parse_response</code>.</p>';
     echo '</td></tr>';
     echo '</table>';
 
