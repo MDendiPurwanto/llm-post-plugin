@@ -47,5 +47,10 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 - Main plugin code lives in `llm-plugin.php`.
 - Keep changes minimal and within WordPress best practices (nonces, capability checks, sanitization).
 
+## Contributing
+- Lihat panduan kontribusi: `CONTRIBUTING.md`
+- Ikuti Kode Etik: `CODE_OF_CONDUCT.md`
+- PR baru akan menjalankan lint dasar (PHP syntax) via GitHub Actions.
+
 ## License
 MIT
