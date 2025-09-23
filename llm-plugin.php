@@ -169,7 +169,10 @@ function llmwp_verify_license_remote($license_key) {
     // Allow payload customization
     $body = apply_filters('llmwp_license_request_body', $body, $license_key, $site);
 
-    $token = trim((string) get_option(LLMWP_OPT_LICENSE_TOKEN, ''));
+    // Allow token via constant (preferred so end-users don't input it)
+    $token = defined('LLMWP_MAYAR_TOKEN') ? (string) constant('LLMWP_MAYAR_TOKEN') : (string) get_option(LLMWP_OPT_LICENSE_TOKEN, '');
+    $token = trim($token);
+    $token = apply_filters('llmwp_license_token', $token);
     if ($token === '') {
         return new WP_Error('no_token', 'License API token is not configured.');
     }
@@ -183,7 +186,8 @@ function llmwp_verify_license_remote($license_key) {
     ];
     $args = apply_filters('llmwp_license_request_args', $args, $body);
 
-    $resp = wp_remote_post(LLMWP_LICENSE_VERIFY_URL, $args);
+    $verify_url = apply_filters('llmwp_license_verify_url', LLMWP_LICENSE_VERIFY_URL, $body, $args);
+    $resp = wp_remote_post($verify_url, $args);
     if (is_wp_error($resp)) {
         return $resp;
     }
@@ -248,7 +252,8 @@ function llmwp_render_settings_page() {
         $pixabay_key = trim((string)($_POST['llmwp_pixabay_key'] ?? ''));
         $img_max     = isset($_POST['llmwp_img_max']) ? max(0, min(10, intval($_POST['llmwp_img_max']))) : 3;
         $license_key = trim((string)($_POST['llmwp_license_key'] ?? ''));
-        $license_tok = trim((string)($_POST['llmwp_license_token'] ?? ''));
+        // Only update stored token if not using constant override
+        $license_tok = defined('LLMWP_MAYAR_TOKEN') ? '' : trim((string)($_POST['llmwp_license_token'] ?? ''));
 
         update_option(LLMWP_OPT_MODEL, $model);
         update_option(LLMWP_OPT_API_KEY, $api_key);
@@ -269,7 +274,9 @@ function llmwp_render_settings_page() {
 
         // License handling (remote verify)
         update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
-        update_option(LLMWP_OPT_LICENSE_TOKEN, $license_tok);
+        if ($license_tok !== '') {
+            update_option(LLMWP_OPT_LICENSE_TOKEN, $license_tok);
+        }
         if ($license_key === '') {
             update_option(LLMWP_OPT_LICENSE_STATUS, 'inactive');
             update_option(LLMWP_OPT_LICENSE_MSG, '');
@@ -391,10 +398,16 @@ function llmwp_render_settings_page() {
     }
     echo '<p class="description">Masukkan license key untuk mengaktifkan Pro. Verifikasi membutuhkan API Token Mayar.</p>';
     echo '</td></tr>';
-    echo '<tr><th scope="row"><label for="llmwp_license_token">Mayar API Token</label></th><td>';
-    echo '<input type="password" id="llmwp_license_token" name="llmwp_license_token" value="' . esc_attr($opts['license_token']) . '" class="regular-text" placeholder="bearer token from Mayar" />';
-    echo '<p class="description">Dapatkan token di Mayar: Integrasi → API Keys & Token. Token digunakan sebagai Authorization header.</p>';
-    echo '</td></tr>';
+    if (!defined('LLMWP_MAYAR_TOKEN')) {
+        echo '<tr><th scope="row"><label for="llmwp_license_token">Mayar API Token</label></th><td>';
+        echo '<input type="password" id="llmwp_license_token" name="llmwp_license_token" value="' . esc_attr($opts['license_token']) . '" class="regular-text" placeholder="bearer token from Mayar" />';
+        echo '<p class="description">Dapatkan token di Mayar: Integrasi → API Keys & Token. Token digunakan sebagai Authorization header.</p>';
+        echo '</td></tr>';
+    } else {
+        echo '<tr><th scope="row">Mayar API Token</th><td>';
+        echo '<code>LLMWP_MAYAR_TOKEN</code> is defined in wp-config.php. The field is hidden for end users.';
+        echo '</td></tr>';
+    }
     echo '</table>';
 
     submit_button('Save Settings');

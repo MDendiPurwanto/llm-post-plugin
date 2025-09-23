@@ -28,7 +28,16 @@ License verification
 
 Konfigurasi yang diperlukan
 - Masukkan License Key di Settings.
-- Masukkan Mayar API Token (Integrasi → API Keys & Token). Token akan dikirim sebagai header `Authorization: bearer <token>`.
+- Untuk token, ada 2 opsi:
+  - Direkomendasikan: set constant di `wp-config.php` agar user tidak perlu input token dan token tidak tersimpan di DB:
+    - `define('LLMWP_MAYAR_TOKEN', 'YOUR_MAYAR_API_TOKEN');`
+  - Alternatif: isi Mayar API Token di Settings (disimpan di opsi WP).
+  Token akan dikirim sebagai header `Authorization: bearer <token>`.
+
+Kustomisasi/Relay (opsional)
+- Jika Anda tidak ingin menyebarkan token ke semua situs pelanggan, arahkan verifikasi ke server Anda sendiri (proxy) dan tambahkan token di server tersebut:
+  - Gunakan filter `llmwp_license_verify_url` untuk mengganti endpoint verifikasi.
+  - Tetap dapat mengubah payload/headers via `llmwp_license_request_body` dan `llmwp_license_request_args`.
 
 ## Installation
 1. Copy this folder into `wp-content/plugins/` (e.g., `wp-content/plugins/llm-posts`).
