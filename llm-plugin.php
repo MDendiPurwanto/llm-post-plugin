@@ -525,6 +525,7 @@ function llmwp_render_generate_page() {
                 } else {
                     // Replace image placeholders and sanitize
                     $content_with_images = llmwp_replace_image_placeholders($post_id, $content);
+                    $content_with_images = llmwp_sideload_existing_img_tags($post_id, $content_with_images);
                     $safe_content = wp_kses_post($content_with_images);
 
                     // Update the post with final content
@@ -535,6 +536,8 @@ function llmwp_render_generate_page() {
                     if (is_wp_error($update_res)) {
                         $notice = '<div class="error"><p>Post created but content update failed: ' . esc_html($update_res->get_error_message()) . '</p></div>';
                     } else {
+                        // Ensure featured image if still missing (use title/topic as query)
+                        llmwp_ensure_featured_image($post_id, $final_title ?: $topic);
                         $edit_link = get_edit_post_link($post_id, '');
                         $notice = '<div class="updated"><p>Post created. <a href="' . esc_url($edit_link) . '">Edit Post</a></p></div>';
                         $result_html = '<h3>Generated Preview</h3><div style="background:#fff;border:1px solid #ccd0d4;padding:16px;max-width:800px">' . $safe_content . '</div>';
@@ -816,6 +819,7 @@ function llmwp_render_bulk_page() {
                     }
 
                     $content_with_images = llmwp_replace_image_placeholders($post_id, $content);
+                    $content_with_images = llmwp_sideload_existing_img_tags($post_id, $content_with_images);
                     $safe_content = wp_kses_post($content_with_images);
                     $update_res = wp_update_post([
                         'ID' => $post_id,
@@ -824,6 +828,8 @@ function llmwp_render_bulk_page() {
                     if (is_wp_error($update_res)) {
                         $items_html .= '<li><strong>' . esc_html($topic) . ':</strong> Post created but update failed - ' . esc_html($update_res->get_error_message()) . '</li>';
                     } else {
+                        // Ensure featured image if still missing (use topic as query)
+                        llmwp_ensure_featured_image($post_id, $topic);
                         $edit_link = get_edit_post_link($post_id, '');
                         $items_html .= '<li><strong>' . esc_html($topic) . ':</strong> Created → <a href="' . esc_url($edit_link) . '">Edit Post</a></li>';
                     }
@@ -1056,6 +1062,89 @@ function llmwp_replace_image_placeholders($post_id, $html) {
     }
 
     return $html;
+}
+
+// Sideload existing <img> tags in content, replace with WP attachments, and set featured if missing
+function llmwp_sideload_existing_img_tags($post_id, $html) {
+    if (!is_string($html) || $html === '') return $html;
+
+    if (!function_exists('media_sideload_image')) {
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+    }
+
+    $pattern = '/<img[^>]*src=["\']([^"\']+)["\'][^>]*>/i';
+    if (!preg_match_all($pattern, $html, $matches, PREG_OFFSET_CAPTURE)) {
+        return $html;
+    }
+
+    $offsetShift = 0;
+    $first_attachment_id = 0;
+    foreach ($matches[0] as $idx => $mfull) {
+        $fullTag = $mfull[0];
+        $pos     = $mfull[1];
+        $src     = isset($matches[1][$idx][0]) ? trim($matches[1][$idx][0]) : '';
+        if ($src === '' || stripos($src, 'http') !== 0) continue;
+
+        // Try sideload
+        $attachment_id = 0;
+        $img_html = '';
+        $result = media_sideload_image($src, $post_id, '', 'id');
+        if (!is_wp_error($result)) {
+            $attachment_id = (int) $result;
+            if ($attachment_id > 0) {
+                $img_tag = wp_get_attachment_image($attachment_id, 'large', false);
+                if ($img_tag) {
+                    $img_html = '<figure class="wp-block-image">' . $img_tag . '</figure>';
+                }
+                if ($first_attachment_id === 0) {
+                    $first_attachment_id = $attachment_id;
+                }
+            }
+        }
+
+        // Replace original <img ...> with attachment HTML if success; otherwise keep original
+        if ($img_html !== '') {
+            $start = $pos + $offsetShift;
+            $len   = strlen($fullTag);
+            $html  = substr($html, 0, $start) . $img_html . substr($html, $start + $len);
+            $offsetShift += strlen($img_html) - $len;
+        }
+    }
+
+    // Set featured image if missing
+    if ($first_attachment_id > 0 && function_exists('set_post_thumbnail')) {
+        if (empty(get_post_thumbnail_id($post_id))) {
+            set_post_thumbnail($post_id, $first_attachment_id);
+        }
+    }
+
+    return $html;
+}
+
+// Ensure a featured image exists by fetching one from provider using a query
+function llmwp_ensure_featured_image($post_id, $query) {
+    if (!function_exists('set_post_thumbnail')) return;
+    if (!empty(get_post_thumbnail_id($post_id))) return; // already set
+
+    $q = trim((string) $query);
+    if ($q === '') return;
+
+    if (!function_exists('media_sideload_image')) {
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+    }
+
+    $url = llmwp_get_image_url_for_query($q);
+    if ($url === '') return;
+    $res = media_sideload_image($url, $post_id, $q, 'id');
+    if (is_wp_error($res)) return;
+    $att_id = (int) $res;
+    if ($att_id > 0) {
+        set_post_thumbnail($post_id, $att_id);
+    }
 }
 
 // Resolve image URL based on provider settings
