@@ -6,6 +6,7 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 - Simple, native PHP plugin (no Composer/JS). 
 - Settings page for API key, model, temperature, max tokens, and default post status.
 - Generate page to create a full post from a title/topic/outline.
+- Bulk Generate page to create multiple posts from a list of keywords/topics (one per line).
 - Uses WordPress HTTP API (`wp_remote_post`) to call OpenAI-compatible chat completions.
 - Supports OpenRouter API (default) so you can use free models.
 - Chat Edit page to modify draft posts:
@@ -54,3 +55,7 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 
 ## License
 MIT
+### Bulk Generate
+1. Go to WP Admin → LLM Posts → Bulk Generate.
+2. Masukkan daftar topik/keyword (satu per baris), pilih bahasa, dan (opsional) outline yang diterapkan ke semua.
+3. Klik “Generate Bulk”. Plugin akan membuat beberapa post (default Draft) dan menampilkan tautan Edit.

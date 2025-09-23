@@ -104,6 +104,15 @@ function llmwp_admin_menu() {
         'llmwp-chat',
         'llmwp_render_chat_page'
     );
+
+    add_submenu_page(
+        'llmwp',
+        'Bulk Generate',
+        'Bulk Generate',
+        'manage_options',
+        'llmwp-bulk',
+        'llmwp_render_bulk_page'
+    );
 }
 add_action('admin_menu', 'llmwp_admin_menu');
 
@@ -518,6 +527,116 @@ function llmwp_render_chat_page() {
         echo $result_html;
     }
 
+    echo '</div>';
+}
+
+// Bulk Generate page
+function llmwp_render_bulk_page() {
+    if (!current_user_can('manage_options')) return;
+
+    $has_key = (bool) get_option(LLMWP_OPT_API_KEY, '');
+    $notice = '';
+    $result_html = '';
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['llmwp_bulk_generate'])) {
+        check_admin_referer('llmwp_bulk_generate');
+
+        $raw_lines = (string) ($_POST['llmwp_bulk_keywords'] ?? '');
+        $lang      = sanitize_text_field($_POST['llmwp_lang'] ?? 'en');
+        $outline   = sanitize_textarea_field($_POST['llmwp_outline'] ?? '');
+
+        if (!$has_key) {
+            $notice = '<div class="error"><p>Please set your API key in Settings.</p></div>';
+        } else {
+            $lines = array_filter(array_map('trim', preg_split('/\r?\n/', $raw_lines)));
+            $total = count($lines);
+            if ($total === 0) {
+                $notice = '<div class="error"><p>Please enter at least one keyword/topic (one per line).</p></div>';
+            } else {
+                $max = 20; // safety cap for a single request
+                if ($total > $max) {
+                    $lines = array_slice($lines, 0, $max);
+                    $notice = '<div class="notice notice-warning"><p>Limiting to ' . esc_html((string)$max) . ' items per batch for stability.</p></div>';
+                }
+
+                $items_html = '';
+                foreach ($lines as $idx => $topic) {
+                    $prompt  = llmwp_build_prompt('', $topic, $lang, $outline);
+                    $content = llmwp_generate_content($prompt);
+                    if (is_wp_error($content)) {
+                        $items_html .= '<li><strong>' . esc_html($topic) . ':</strong> Failed - ' . esc_html($content->get_error_message()) . '</li>';
+                        continue;
+                    }
+
+                    $final_title = llmwp_extract_title_from_content($content);
+                    if ($final_title === '') {
+                        $final_title = 'LLM Generated: ' . wp_strip_all_tags($topic);
+                    }
+
+                    $post_id = wp_insert_post([
+                        'post_title'   => $final_title,
+                        'post_content' => '',
+                        'post_status'  => get_option(LLMWP_OPT_POST_STATUS, 'draft'),
+                    ]);
+                    if (is_wp_error($post_id)) {
+                        $items_html .= '<li><strong>' . esc_html($topic) . ':</strong> Could not create post - ' . esc_html($post_id->get_error_message()) . '</li>';
+                        continue;
+                    }
+
+                    $content_with_images = llmwp_replace_image_placeholders($post_id, $content);
+                    $safe_content = wp_kses_post($content_with_images);
+                    $update_res = wp_update_post([
+                        'ID' => $post_id,
+                        'post_content' => $safe_content,
+                    ], true);
+                    if (is_wp_error($update_res)) {
+                        $items_html .= '<li><strong>' . esc_html($topic) . ':</strong> Post created but update failed - ' . esc_html($update_res->get_error_message()) . '</li>';
+                    } else {
+                        $edit_link = get_edit_post_link($post_id, '');
+                        $items_html .= '<li><strong>' . esc_html($topic) . ':</strong> Created → <a href="' . esc_url($edit_link) . '">Edit Post</a></li>';
+                    }
+                }
+
+                $result_html  = '<h3>Bulk Results</h3>';
+                $result_html .= '<ol>' . $items_html . '</ol>';
+            }
+        }
+    }
+
+    echo '<div class="wrap">';
+    echo '<h1>Bulk Generate Posts</h1>';
+    echo $notice;
+    if (!$has_key) {
+        echo '<div class="notice notice-warning"><p>No API key configured. Please set one in Settings.</p></div>';
+    }
+
+    echo '<form method="post">';
+    wp_nonce_field('llmwp_bulk_generate');
+    echo '<table class="form-table" role="presentation">';
+    echo '<tr><th scope="row"><label for="llmwp_bulk_keywords">Keywords / Topics</label></th><td>';
+    echo '<textarea id="llmwp_bulk_keywords" name="llmwp_bulk_keywords" rows="10" class="large-text" placeholder="Satu topik per baris"></textarea>';
+    echo '<p class="description">Setiap baris akan menghasilkan satu post. Maksimal 20 per batch.</p>';
+    echo '</td></tr>';
+
+    echo '<tr><th scope="row"><label for="llmwp_lang">Language</label></th><td>';
+    echo '<select id="llmwp_lang" name="llmwp_lang">';
+    foreach ([ 'en' => 'English', 'id' => 'Indonesian' ] as $code => $label) {
+        echo '<option value="' . esc_attr($code) . '">' . esc_html($label) . '</option>';
+    }
+    echo '</select>';
+    echo '</td></tr>';
+
+    echo '<tr><th scope="row"><label for="llmwp_outline">Outline (optional, applied to all)</label></th><td>';
+    echo '<textarea id="llmwp_outline" name="llmwp_outline" rows="6" class="large-text" placeholder="Gunakan poin-poin atau struktur H2/H3 yang diterapkan untuk semua topik"></textarea>';
+    echo '</td></tr>';
+    echo '</table>';
+
+    echo '<p class="submit">';
+    echo '<input type="submit" name="llmwp_bulk_generate" id="llmwp_bulk_generate" class="button button-primary" value="Generate Bulk" />';
+    echo '</p>';
+    echo '</form>';
+
+    echo $result_html;
     echo '</div>';
 }
 
