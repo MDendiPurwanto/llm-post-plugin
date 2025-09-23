@@ -288,8 +288,6 @@ function llmwp_render_settings_page() {
         $pixabay_key = trim((string)($_POST['llmwp_pixabay_key'] ?? ''));
         $img_max     = isset($_POST['llmwp_img_max']) ? max(0, min(10, intval($_POST['llmwp_img_max']))) : 3;
         $license_key = trim((string)($_POST['llmwp_license_key'] ?? ''));
-        // Only update stored token if not using constant override
-        $license_tok = defined('LLMWP_MAYAR_TOKEN') ? '' : trim((string)($_POST['llmwp_license_token'] ?? ''));
         $docs_url   = trim((string)($_POST['llmwp_docs_url'] ?? ''));
         $support_url= trim((string)($_POST['llmwp_support_url'] ?? ''));
         $pro_url    = trim((string)($_POST['llmwp_pro_url'] ?? ''));
@@ -316,9 +314,7 @@ function llmwp_render_settings_page() {
 
         // License handling (remote verify)
         update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
-        if ($license_tok !== '') {
-            update_option(LLMWP_OPT_LICENSE_TOKEN, $license_tok);
-        }
+        // Mayar API token is configured by developer (e.g., via constant) and not editable by end users.
         if ($license_key === '') {
             update_option(LLMWP_OPT_LICENSE_STATUS, 'inactive');
             update_option(LLMWP_OPT_LICENSE_MSG, '');
@@ -346,7 +342,6 @@ function llmwp_render_settings_page() {
         'license_key' => get_option(LLMWP_OPT_LICENSE_KEY, ''),
         'license_status' => get_option(LLMWP_OPT_LICENSE_STATUS, 'inactive'),
         'license_msg' => get_option(LLMWP_OPT_LICENSE_MSG, ''),
-        'license_token' => get_option(LLMWP_OPT_LICENSE_TOKEN, ''),
     ];
 
     echo '<div class="wrap">';
@@ -456,16 +451,7 @@ function llmwp_render_settings_page() {
     }
     echo '<p class="description">Masukkan license key untuk mengaktifkan Pro. Verifikasi membutuhkan API Token Mayar.</p>';
     echo '</td></tr>';
-    if (!defined('LLMWP_MAYAR_TOKEN')) {
-        echo '<tr><th scope="row"><label for="llmwp_license_token">Mayar API Token</label></th><td>';
-        echo '<input type="password" id="llmwp_license_token" name="llmwp_license_token" value="' . esc_attr($opts['license_token']) . '" class="regular-text" placeholder="bearer token from Mayar" />';
-        echo '<p class="description">Dapatkan token di Mayar: Integrasi → API Keys & Token. Token digunakan sebagai Authorization header.</p>';
-        echo '</td></tr>';
-    } else {
-        echo '<tr><th scope="row">Mayar API Token</th><td>';
-        echo '<code>LLMWP_MAYAR_TOKEN</code> is defined in wp-config.php. The field is hidden for end users.';
-        echo '</td></tr>';
-    }
+    // Token diatur oleh developer dan tidak tampil di UI.
     echo '</table>';
 
     submit_button('Save Settings');
