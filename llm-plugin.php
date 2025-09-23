@@ -31,6 +31,7 @@ const LLMWP_OPT_LICENSE_TOKEN = 'llmwp_license_token';
 const LLMWP_OPT_SUPPORT_URL   = 'llmwp_support_url';
 const LLMWP_OPT_DOCS_URL      = 'llmwp_docs_url';
 const LLMWP_OPT_PRO_URL       = 'llmwp_pro_url';
+const LLMWP_OPT_LICENSE_LAST  = 'llmwp_license_last';
 
 // License service (Mayar)
 const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/software/v1/license/verify';
@@ -59,6 +60,7 @@ function llmwp_default_options() {
         LLMWP_OPT_SUPPORT_URL => '',
         LLMWP_OPT_DOCS_URL => '',
         LLMWP_OPT_PRO_URL => '',
+        LLMWP_OPT_LICENSE_LAST => 0,
     ];
 }
 
@@ -188,6 +190,7 @@ function llmwp_check_license_status($license_key) {
     $status  = isset($res['status']) ? (string) $res['status'] : 'inactive';
     $message = isset($res['message']) ? (string) $res['message'] : '';
     update_option(LLMWP_OPT_LICENSE_MSG, $message);
+    update_option(LLMWP_OPT_LICENSE_LAST, time());
     return ($status === 'active') ? 'active' : 'inactive';
 }
 
@@ -215,7 +218,7 @@ function llmwp_verify_license_remote($license_key) {
     $args = [
         'headers' => [
             'Content-Type'  => 'application/json',
-            'Authorization' => 'bearer ' . $token,
+            'Authorization' => 'Bearer ' . $token,
         ],
         'timeout' => 20,
         'body'    => wp_json_encode($body),
@@ -275,6 +278,22 @@ function llmwp_render_settings_page() {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         check_admin_referer('llmwp_settings');
 
+        // Handle Verify-only action without changing other settings
+        if (isset($_POST['llmwp_license_verify'])) {
+            $incoming_key = isset($_POST['llmwp_license_key']) ? trim((string) $_POST['llmwp_license_key']) : '';
+            $license_key  = $incoming_key !== '' ? $incoming_key : (string) get_option(LLMWP_OPT_LICENSE_KEY, '');
+            update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
+            if ($license_key === '') {
+                update_option(LLMWP_OPT_LICENSE_STATUS, 'inactive');
+                update_option(LLMWP_OPT_LICENSE_MSG, '');
+                update_option(LLMWP_OPT_LICENSE_LAST, time());
+            } else {
+                $new_status = llmwp_check_license_status($license_key);
+                update_option(LLMWP_OPT_LICENSE_STATUS, $new_status);
+            }
+            $notice = '<div class="updated"><p>License verification completed.</p></div>';
+        } else {
+
         $model       = sanitize_text_field($_POST['llmwp_model'] ?? 'meta-llama/llama-3.1-8b-instruct:free');
         $api_key     = trim((string)($_POST['llmwp_api_key'] ?? ''));
         $temperature = isset($_POST['llmwp_temperature']) ? floatval($_POST['llmwp_temperature']) : 0.7;
@@ -323,7 +342,8 @@ function llmwp_render_settings_page() {
             update_option(LLMWP_OPT_LICENSE_STATUS, $new_status);
         }
 
-        $notice = '<div class="updated"><p>Settings saved.</p></div>';
+            $notice = '<div class="updated"><p>Settings saved.</p></div>';
+        }
     }
 
     $opts = [
@@ -449,7 +469,12 @@ function llmwp_render_settings_page() {
     if (!empty($opts['license_msg'])) {
         echo '<p><em>' . esc_html($opts['license_msg']) . '</em></p>';
     }
+    $last_ts = (int) get_option(LLMWP_OPT_LICENSE_LAST, 0);
+    if ($last_ts > 0) {
+        echo '<p class="description">Last checked: ' . esc_html( date_i18n( get_option('date_format') . ' ' . get_option('time_format'), $last_ts ) ) . '</p>';
+    }
     echo '<p class="description">Masukkan license key untuk mengaktifkan Pro.</p>';
+    echo '<p><button type="submit" name="llmwp_license_verify" class="button">Verify Now</button></p>';
     echo '</td></tr>';
     // Token diatur oleh developer dan tidak tampil di UI.
     echo '</table>';
