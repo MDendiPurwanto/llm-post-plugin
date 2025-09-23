@@ -28,6 +28,9 @@ const LLMWP_OPT_LICENSE_KEY   = 'llmwp_license_key';
 const LLMWP_OPT_LICENSE_STATUS= 'llmwp_license_status'; // 'active' | 'inactive'
 const LLMWP_OPT_LICENSE_MSG   = 'llmwp_license_msg';
 const LLMWP_OPT_LICENSE_TOKEN = 'llmwp_license_token';
+const LLMWP_OPT_SUPPORT_URL   = 'llmwp_support_url';
+const LLMWP_OPT_DOCS_URL      = 'llmwp_docs_url';
+const LLMWP_OPT_PRO_URL       = 'llmwp_pro_url';
 
 // License service (Mayar)
 const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/software/v1/license/verify';
@@ -53,6 +56,9 @@ function llmwp_default_options() {
         LLMWP_OPT_LICENSE_STATUS => 'inactive',
         LLMWP_OPT_LICENSE_MSG => '',
         LLMWP_OPT_LICENSE_TOKEN => '',
+        LLMWP_OPT_SUPPORT_URL => '',
+        LLMWP_OPT_DOCS_URL => '',
+        LLMWP_OPT_PRO_URL => '',
     ];
 }
 
@@ -125,8 +131,32 @@ function llmwp_admin_menu() {
         'llmwp-bulk',
         'llmwp_render_bulk_page'
     );
+
+    add_submenu_page(
+        'llmwp',
+        'Help / Support',
+        'Help / Support',
+        'manage_options',
+        'llmwp-help',
+        'llmwp_render_help_page'
+    );
 }
 add_action('admin_menu', 'llmwp_admin_menu');
+
+// Show Pro CTA notice on plugin pages if Free and a Pro URL is configured
+function llmwp_admin_notice_pro_cta() {
+    if (!is_admin()) return;
+    if (llmwp_is_pro()) return;
+    $page = isset($_GET['page']) ? (string) $_GET['page'] : '';
+    if ($page === '' || strpos($page, 'llmwp') !== 0) return;
+    $pro_url = trim((string) get_option(LLMWP_OPT_PRO_URL, ''));
+    if ($pro_url === '') return;
+    echo '<div class="notice notice-info" style="border-left-color:#46b450">'
+       . '<p><strong>Unlock Pro features</strong> — tingkatkan batas Bulk Generate dan fitur lanjutan. '
+       . '<a class="button button-primary" href="' . esc_url($pro_url) . '" target="_blank" rel="noopener">Upgrade to Pro</a></p>'
+       . '</div>';
+}
+add_action('admin_notices', 'llmwp_admin_notice_pro_cta');
 
 // Simple helpers for Free vs Pro
 function llmwp_is_pro() {
@@ -137,6 +167,12 @@ function llmwp_is_pro() {
      * Allow external code to force pro mode.
      */
     return (bool) apply_filters('llmwp_is_pro', $is_pro, $status);
+}
+
+function llmwp_badge_html() {
+    return llmwp_is_pro()
+        ? ' <span style="display:inline-block;padding:2px 6px;background:#46b450;color:#fff;border-radius:3px;font-size:12px;vertical-align:middle;">Pro</span>'
+        : ' <span style="display:inline-block;padding:2px 6px;background:#72777c;color:#fff;border-radius:3px;font-size:12px;vertical-align:middle;">Free</span>';
 }
 
 function llmwp_check_license_status($license_key) {
@@ -254,6 +290,9 @@ function llmwp_render_settings_page() {
         $license_key = trim((string)($_POST['llmwp_license_key'] ?? ''));
         // Only update stored token if not using constant override
         $license_tok = defined('LLMWP_MAYAR_TOKEN') ? '' : trim((string)($_POST['llmwp_license_token'] ?? ''));
+        $docs_url   = trim((string)($_POST['llmwp_docs_url'] ?? ''));
+        $support_url= trim((string)($_POST['llmwp_support_url'] ?? ''));
+        $pro_url    = trim((string)($_POST['llmwp_pro_url'] ?? ''));
 
         update_option(LLMWP_OPT_MODEL, $model);
         update_option(LLMWP_OPT_API_KEY, $api_key);
@@ -271,6 +310,9 @@ function llmwp_render_settings_page() {
         update_option(LLMWP_OPT_IMG_PROVIDER, in_array($img_provider, ['unsplash','pixabay'], true) ? $img_provider : 'unsplash');
         update_option(LLMWP_OPT_PIXABAY_KEY, $pixabay_key);
         update_option(LLMWP_OPT_IMG_MAX, $img_max);
+        if ($docs_url !== '') update_option(LLMWP_OPT_DOCS_URL, esc_url_raw($docs_url));
+        if ($support_url !== '') update_option(LLMWP_OPT_SUPPORT_URL, esc_url_raw($support_url));
+        if ($pro_url !== '') update_option(LLMWP_OPT_PRO_URL, esc_url_raw($pro_url));
 
         // License handling (remote verify)
         update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
@@ -308,7 +350,7 @@ function llmwp_render_settings_page() {
     ];
 
     echo '<div class="wrap">';
-    echo '<h1>LLM Posts Settings</h1>';
+    echo '<h1>LLM Posts Settings' . llmwp_badge_html() . '</h1>';
     echo $notice;
     echo '<form method="post">';
     wp_nonce_field('llmwp_settings');
@@ -383,6 +425,22 @@ function llmwp_render_settings_page() {
     echo '<input type="number" min="0" max="10" id="llmwp_img_max" name="llmwp_img_max" value="' . esc_attr($opts['img_max']) . '" />';
     echo '</td></tr>';
 
+    echo '</table>';
+
+    echo '<h2>Branding & Links</h2>';
+    echo '<table class="form-table" role="presentation">';
+    echo '<tr><th scope="row"><label for="llmwp_docs_url">Documentation URL</label></th><td>';
+    $docs = esc_attr( get_option(LLMWP_OPT_DOCS_URL, '') );
+    echo '<input type="url" id="llmwp_docs_url" name="llmwp_docs_url" value="' . $docs . '" class="regular-text code" placeholder="https://help.example.com/docs" />';
+    echo '</td></tr>';
+    echo '<tr><th scope="row"><label for="llmwp_support_url">Support URL</label></th><td>';
+    $sup = esc_attr( get_option(LLMWP_OPT_SUPPORT_URL, '') );
+    echo '<input type="url" id="llmwp_support_url" name="llmwp_support_url" value="' . $sup . '" class="regular-text code" placeholder="https://help.example.com/support" />';
+    echo '</td></tr>';
+    echo '<tr><th scope="row"><label for="llmwp_pro_url">Pro Upgrade URL</label></th><td>';
+    $pro = esc_attr( get_option(LLMWP_OPT_PRO_URL, '') );
+    echo '<input type="url" id="llmwp_pro_url" name="llmwp_pro_url" value="' . $pro . '" class="regular-text code" placeholder="https://example.com/pricing" />';
+    echo '</td></tr>';
     echo '</table>';
 
     echo '<h2>License</h2>';
@@ -475,7 +533,7 @@ function llmwp_render_generate_page() {
     }
 
     echo '<div class="wrap">';
-    echo '<h1>Generate Post with LLM</h1>';
+    echo '<h1>Generate Post with LLM' . llmwp_badge_html() . '</h1>';
     echo $notice;
     if (!$has_key) {
         echo '<div class="notice notice-warning"><p>No API key configured. Please set one in Settings.</p></div>';
@@ -635,7 +693,7 @@ function llmwp_render_chat_page() {
     }
 
     echo '<div class="wrap">';
-    echo '<h1>Chat Edit Draft Post</h1>';
+    echo '<h1>Chat Edit Draft Post' . llmwp_badge_html() . '</h1>';
     echo $notice;
 
     echo '<form method="get" style="margin-bottom:16px">';
@@ -766,7 +824,7 @@ function llmwp_render_bulk_page() {
     }
 
     echo '<div class="wrap">';
-    echo '<h1>Bulk Generate Posts</h1>';
+    echo '<h1>Bulk Generate Posts' . llmwp_badge_html() . '</h1>';
     echo $notice;
     if (!$has_key) {
         echo '<div class="notice notice-warning"><p>No API key configured. Please set one in Settings.</p></div>';
@@ -800,6 +858,43 @@ function llmwp_render_bulk_page() {
     echo '</form>';
 
     echo $result_html;
+    echo '</div>';
+}
+
+// Help / Support page
+function llmwp_render_help_page() {
+    if (!current_user_can('manage_options')) return;
+    $docs_url = trim((string) get_option(LLMWP_OPT_DOCS_URL, ''));
+    $sup_url  = trim((string) get_option(LLMWP_OPT_SUPPORT_URL, ''));
+    $pro_url  = trim((string) get_option(LLMWP_OPT_PRO_URL, ''));
+
+    echo '<div class="wrap">';
+    echo '<h1>Help & Support' . llmwp_badge_html() . '</h1>';
+    echo '<p>Temukan panduan, FAQ, dan dukungan untuk plugin ini.</p>';
+
+    echo '<h2>Resources</h2>';
+    echo '<ul style="list-style: disc;margin-left:20px">';
+    if ($docs_url !== '') {
+        echo '<li><a href="' . esc_url($docs_url) . '" target="_blank" rel="noopener">Documentation</a></li>';
+    }
+    if ($sup_url !== '') {
+        echo '<li><a href="' . esc_url($sup_url) . '" target="_blank" rel="noopener">Support</a></li>';
+    }
+    if ($pro_url !== '' && !llmwp_is_pro()) {
+        echo '<li><a class="button button-primary" href="' . esc_url($pro_url) . '" target="_blank" rel="noopener">Upgrade to Pro</a></li>';
+    }
+    if ($docs_url === '' && $sup_url === '') {
+        echo '<li>Silakan set tautan dokumentasi dan support di Settings → Branding & Links.</li>';
+    }
+    echo '</ul>';
+
+    echo '<h2>Troubleshooting</h2>';
+    echo '<ul style="list-style: disc;margin-left:20px">';
+    echo '<li>Pastikan API key LLM terisi di Settings.</li>';
+    echo '<li>Jika fitur Pro tidak aktif, periksa License Key dan koneksi server.</li>';
+    echo '<li>Aktifkan debug WordPress untuk log error (WP_DEBUG_LOG).</li>';
+    echo '</ul>';
+
     echo '</div>';
 }
 

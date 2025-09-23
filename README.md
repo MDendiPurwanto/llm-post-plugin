@@ -68,5 +68,8 @@ Licensing
 2. Masukkan daftar topik/keyword (satu per baris), pilih bahasa, dan (opsional) outline yang diterapkan ke semua.
 3. Klik “Generate Bulk”. Plugin akan membuat beberapa post (default Draft) dan menampilkan tautan Edit. Batas per batch mengikuti mode Free/Pro.
 
+### Help / Support
+Temukan bantuan di WP Admin → LLM Posts → Help / Support. Konfigurasikan tautan Documentation dan Support di Settings → Branding & Links.
+
 ## License
 MIT
