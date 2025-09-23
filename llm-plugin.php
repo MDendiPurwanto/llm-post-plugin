@@ -449,7 +449,7 @@ function llmwp_render_settings_page() {
     if (!empty($opts['license_msg'])) {
         echo '<p><em>' . esc_html($opts['license_msg']) . '</em></p>';
     }
-    echo '<p class="description">Masukkan license key untuk mengaktifkan Pro. Verifikasi membutuhkan API Token Mayar.</p>';
+    echo '<p class="description">Masukkan license key untuk mengaktifkan Pro.</p>';
     echo '</td></tr>';
     // Token diatur oleh developer dan tidak tampil di UI.
     echo '</table>';
