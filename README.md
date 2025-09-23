@@ -15,29 +15,11 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 
 ### Free vs Pro
 - Free: semua fitur inti tersedia; Bulk Generate dibatasi 3 topik per batch.
-- Pro: masukkan license key di Settings untuk meningkatkan batas Bulk Generate hingga 50 per batch dan membuka jalan untuk fitur lanjutan.
+- Pro: masukkan license key di Settings untuk meningkatkan batas Bulk Generate hingga 50 per batch dan membuka akses fitur lanjutan.
 
-License verification
-- Endpoint: `https://api.mayar.id/software/v1/license/verify`
-- Product ID: `acf8637c-f05f-4ee6-9d37-1fa55fea3b04`
-- Plugin mengirim payload JSON default: `{ licenseCode, productId }` sesuai dokumen Mayar.
-- Jika format Mayar berbeda, kustomisasi via filter:
-  - `llmwp_license_request_body` (ubah payload)
-  - `llmwp_license_request_args` (ubah headers/timeout/dll.)
-  - `llmwp_license_parse_response` (mapping respon ke `{status: 'active'|'inactive', message}`)
-
-Konfigurasi yang diperlukan
-- Masukkan License Key di Settings.
-- Untuk token, ada 2 opsi:
-  - Direkomendasikan: set constant di `wp-config.php` agar user tidak perlu input token dan token tidak tersimpan di DB:
-    - `define('LLMWP_MAYAR_TOKEN', 'YOUR_MAYAR_API_TOKEN');`
-  - Alternatif: isi Mayar API Token di Settings (disimpan di opsi WP).
-  Token akan dikirim sebagai header `Authorization: bearer <token>`.
-
-Kustomisasi/Relay (opsional)
-- Jika Anda tidak ingin menyebarkan token ke semua situs pelanggan, arahkan verifikasi ke server Anda sendiri (proxy) dan tambahkan token di server tersebut:
-  - Gunakan filter `llmwp_license_verify_url` untuk mengganti endpoint verifikasi.
-  - Tetap dapat mengubah payload/headers via `llmwp_license_request_body` dan `llmwp_license_request_args`.
+Licensing
+- Masukkan license key di Settings untuk mengaktifkan mode Pro.
+- Detail mekanisme verifikasi lisensi ditangani oleh plugin secara internal.
 
 ## Installation
 1. Copy this folder into `wp-content/plugins/` (e.g., `wp-content/plugins/llm-posts`).
@@ -74,8 +56,7 @@ Kustomisasi/Relay (opsional)
 ## Development
 - Main plugin code lives in `llm-plugin.php`.
 - Keep changes minimal and within WordPress best practices (nonces, capability checks, sanitization).
-- License system scaffold: gunakan helper `llmwp_is_pro()` dan filter `llmwp_license_check` untuk integrasi validasi lisensi dari server Anda.
- - Mayar verification built-in via `llmwp_verify_license_remote()`; lihat filter untuk kustomisasi.
+- Licensing: helper `llmwp_is_pro()` tersedia untuk membedakan fitur Free/Pro.
 
 ## Contributing
 - Lihat panduan kontribusi: `CONTRIBUTING.md`
