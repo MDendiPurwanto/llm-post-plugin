@@ -34,7 +34,8 @@ const LLMWP_OPT_PRO_URL       = 'llmwp_pro_url';
 const LLMWP_OPT_LICENSE_LAST  = 'llmwp_license_last';
 
 // License service (Mayar)
-const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/software/v1/license/verify';
+// Activation endpoint (accepts licenseCode + productId)
+const LLMWP_LICENSE_VERIFY_URL = 'https://api.mayar.id/saas/v1/license/activate';
 const LLMWP_PRODUCT_ID         = 'acf8637c-f05f-4ee6-9d37-1fa55fea3b04';
 
 // Defaults
@@ -244,7 +245,7 @@ function llmwp_verify_license_remote($license_key) {
     if (is_array($data)) {
         // Example success: { statusCode:200, licenseCode:{ status:'ACTIVE', ... } }
         $statusCode = isset($data['statusCode']) ? (int) $data['statusCode'] : $code;
-        if ($statusCode === 200 && isset($data['licenseCode']['status'])) {
+        if (in_array($statusCode, [200,201], true) && isset($data['licenseCode']['status'])) {
             $st = strtoupper((string) $data['licenseCode']['status']);
             if ($st === 'ACTIVE') {
                 $parsed['status'] = 'active';
