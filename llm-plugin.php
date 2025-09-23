@@ -24,6 +24,8 @@ const LLMWP_OPT_IMG_ENABLE  = 'llmwp_img_enable';
 const LLMWP_OPT_IMG_PROVIDER= 'llmwp_img_provider';
 const LLMWP_OPT_PIXABAY_KEY = 'llmwp_pixabay_key';
 const LLMWP_OPT_IMG_MAX     = 'llmwp_img_max';
+const LLMWP_OPT_LICENSE_KEY = 'llmwp_license_key';
+const LLMWP_OPT_LICENSE_STATUS = 'llmwp_license_status'; // 'active' | 'inactive'
 
 // Defaults
 function llmwp_default_options() {
@@ -41,6 +43,8 @@ function llmwp_default_options() {
         LLMWP_OPT_IMG_PROVIDER=> 'unsplash', // unsplash | pixabay
         LLMWP_OPT_PIXABAY_KEY => '',
         LLMWP_OPT_IMG_MAX     => 3,
+        LLMWP_OPT_LICENSE_KEY => '',
+        LLMWP_OPT_LICENSE_STATUS => 'inactive',
     ];
 }
 
@@ -116,6 +120,34 @@ function llmwp_admin_menu() {
 }
 add_action('admin_menu', 'llmwp_admin_menu');
 
+// Simple helpers for Free vs Pro
+function llmwp_is_pro() {
+    $status = get_option(LLMWP_OPT_LICENSE_STATUS, 'inactive');
+    $is_pro = ($status === 'active');
+    /**
+     * Filter: llmwp_is_pro
+     * Allow external code to force pro mode.
+     */
+    return (bool) apply_filters('llmwp_is_pro', $is_pro, $status);
+}
+
+function llmwp_check_license_status($license_key) {
+    $license_key = trim((string) $license_key);
+    $status = 'inactive';
+    if ($license_key !== '') {
+        // Basic local rule (placeholder). Replace via filter with real server check.
+        if (preg_match('/^LLMWP-[A-Z0-9]{6,}$/i', $license_key) || strlen($license_key) >= 16) {
+            $status = 'active';
+        }
+    }
+    /**
+     * Filter: llmwp_license_check
+     * Return 'active' or 'inactive' after performing a custom/remote validation.
+     */
+    $status = (string) apply_filters('llmwp_license_check', $status, $license_key);
+    return ($status === 'active') ? 'active' : 'inactive';
+}
+
 // Settings page
 function llmwp_render_settings_page() {
     if (!current_user_can('manage_options')) return;
@@ -136,6 +168,7 @@ function llmwp_render_settings_page() {
         $img_provider= sanitize_text_field($_POST['llmwp_img_provider'] ?? 'unsplash');
         $pixabay_key = trim((string)($_POST['llmwp_pixabay_key'] ?? ''));
         $img_max     = isset($_POST['llmwp_img_max']) ? max(0, min(10, intval($_POST['llmwp_img_max']))) : 3;
+        $license_key = trim((string)($_POST['llmwp_license_key'] ?? ''));
 
         update_option(LLMWP_OPT_MODEL, $model);
         update_option(LLMWP_OPT_API_KEY, $api_key);
@@ -154,6 +187,11 @@ function llmwp_render_settings_page() {
         update_option(LLMWP_OPT_PIXABAY_KEY, $pixabay_key);
         update_option(LLMWP_OPT_IMG_MAX, $img_max);
 
+        // License handling
+        update_option(LLMWP_OPT_LICENSE_KEY, $license_key);
+        $new_status = llmwp_check_license_status($license_key);
+        update_option(LLMWP_OPT_LICENSE_STATUS, $new_status);
+
         $notice = '<div class="updated"><p>Settings saved.</p></div>';
     }
 
@@ -170,6 +208,8 @@ function llmwp_render_settings_page() {
         'img_provider'=> get_option(LLMWP_OPT_IMG_PROVIDER, 'unsplash'),
         'pixabay_key' => get_option(LLMWP_OPT_PIXABAY_KEY, ''),
         'img_max'     => (int) get_option(LLMWP_OPT_IMG_MAX, 3),
+        'license_key' => get_option(LLMWP_OPT_LICENSE_KEY, ''),
+        'license_status' => get_option(LLMWP_OPT_LICENSE_STATUS, 'inactive'),
     ];
 
     echo '<div class="wrap">';
@@ -248,6 +288,18 @@ function llmwp_render_settings_page() {
     echo '<input type="number" min="0" max="10" id="llmwp_img_max" name="llmwp_img_max" value="' . esc_attr($opts['img_max']) . '" />';
     echo '</td></tr>';
 
+    echo '</table>';
+
+    echo '<h2>License</h2>';
+    echo '<table class="form-table" role="presentation">';
+    echo '<tr><th scope="row"><label for="llmwp_license_key">License Key</label></th><td>';
+    echo '<input type="text" id="llmwp_license_key" name="llmwp_license_key" value="' . esc_attr($opts['license_key']) . '" class="regular-text" placeholder="LLMWP-XXXXXX..." />';
+    $status_badge = ($opts['license_status'] === 'active')
+      ? '<span style="display:inline-block;padding:2px 6px;background:#46b450;color:#fff;border-radius:3px;margin-left:8px;">Pro active</span>'
+      : '<span style="display:inline-block;padding:2px 6px;background:#d63638;color:#fff;border-radius:3px;margin-left:8px;">Free</span>';
+    echo $status_badge;
+    echo '<p class="description">Masukkan license key untuk mengaktifkan fitur Pro. Validasi dasar terjadi lokal dan dapat dioverride via filter <code>llmwp_license_check</code>.</p>';
+    echo '</td></tr>';
     echo '</table>';
 
     submit_button('Save Settings');
@@ -553,10 +605,12 @@ function llmwp_render_bulk_page() {
             if ($total === 0) {
                 $notice = '<div class="error"><p>Please enter at least one keyword/topic (one per line).</p></div>';
             } else {
-                $max = 20; // safety cap for a single request
+                // Free vs Pro cap per batch
+                $max = llmwp_is_pro() ? 50 : 3;
                 if ($total > $max) {
                     $lines = array_slice($lines, 0, $max);
-                    $notice = '<div class="notice notice-warning"><p>Limiting to ' . esc_html((string)$max) . ' items per batch for stability.</p></div>';
+                    $msg = llmwp_is_pro() ? 'Limiting to ' . esc_html((string)$max) . ' items per batch for stability.' : 'Free mode: limited to ' . esc_html((string)$max) . ' items per batch. Add a license key in Settings to unlock higher limits.';
+                    $notice = '<div class="notice notice-warning"><p>' . $msg . '</p></div>';
                 }
 
                 $items_html = '';
@@ -615,7 +669,8 @@ function llmwp_render_bulk_page() {
     echo '<table class="form-table" role="presentation">';
     echo '<tr><th scope="row"><label for="llmwp_bulk_keywords">Keywords / Topics</label></th><td>';
     echo '<textarea id="llmwp_bulk_keywords" name="llmwp_bulk_keywords" rows="10" class="large-text" placeholder="Satu topik per baris"></textarea>';
-    echo '<p class="description">Setiap baris akan menghasilkan satu post. Maksimal 20 per batch.</p>';
+    $cap_text = llmwp_is_pro() ? 'Maksimal 50 per batch (Pro).' : 'Maksimal 3 per batch (Free). Tambahkan license di Settings untuk meningkatkan batas.';
+    echo '<p class="description">Setiap baris akan menghasilkan satu post. ' . esc_html($cap_text) . '</p>';
     echo '</td></tr>';
 
     echo '<tr><th scope="row"><label for="llmwp_lang">Language</label></th><td>';

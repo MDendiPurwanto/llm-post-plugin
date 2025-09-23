@@ -13,6 +13,10 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
   - Edit Selection: rewrite an exact fragment via chat.
   - Insert Near Anchor: generate a new section and insert before/after an anchor.
 
+### Free vs Pro
+- Free: semua fitur inti tersedia; Bulk Generate dibatasi 3 topik per batch.
+- Pro: masukkan license key di Settings untuk meningkatkan batas Bulk Generate hingga 50 per batch dan membuka jalan untuk fitur lanjutan.
+
 ## Installation
 1. Copy this folder into `wp-content/plugins/` (e.g., `wp-content/plugins/llm-posts`).
 2. In WP Admin → Plugins, activate “LLM Posts (Native PHP)”.
@@ -21,6 +25,7 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 1. Go to WP Admin → LLM Posts → Settings.
 2. Enter your API key (OpenRouter or OpenAI) and preferred model.
 3. Adjust temperature, max tokens, and default post status as needed.
+4. (Optional, Pro) Enter your license key to enable Pro mode.
 
 ## Usage
 1. Go to WP Admin → LLM Posts → Generate.
@@ -47,15 +52,17 @@ Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPr
 ## Development
 - Main plugin code lives in `llm-plugin.php`.
 - Keep changes minimal and within WordPress best practices (nonces, capability checks, sanitization).
+- License system scaffold: gunakan helper `llmwp_is_pro()` dan filter `llmwp_license_check` untuk integrasi validasi lisensi dari server Anda.
 
 ## Contributing
 - Lihat panduan kontribusi: `CONTRIBUTING.md`
 - Ikuti Kode Etik: `CODE_OF_CONDUCT.md`
 - PR baru akan menjalankan lint dasar (PHP syntax) via GitHub Actions.
 
-## License
-MIT
 ### Bulk Generate
 1. Go to WP Admin → LLM Posts → Bulk Generate.
 2. Masukkan daftar topik/keyword (satu per baris), pilih bahasa, dan (opsional) outline yang diterapkan ke semua.
-3. Klik “Generate Bulk”. Plugin akan membuat beberapa post (default Draft) dan menampilkan tautan Edit.
+3. Klik “Generate Bulk”. Plugin akan membuat beberapa post (default Draft) dan menampilkan tautan Edit. Batas per batch mengikuti mode Free/Pro.
+
+## License
+MIT
