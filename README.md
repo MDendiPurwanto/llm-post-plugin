@@ -1,4 +1,4 @@
-# WordPress Plugin: LLM Posts (Native PHP)
+# WordPress Plugin: LLM Posts
 
 Generate SEO-friendly WordPress posts via an LLM using native PHP and the WordPress HTTP API. Provides an admin UI for configuring API key/model and a simple form to generate posts directly.
 
